@@ -105,7 +105,7 @@ namespace ShowIP
 
             // Timer refresh
             refreshTimer = new Timer();
-            refreshTimer.Interval = 5000;
+            refreshTimer.Interval = 30000;
             refreshTimer.Tick += (s, e) => RefreshInfo();
             refreshTimer.Start();
 
@@ -177,9 +177,9 @@ namespace ShowIP
 
             // Device Name
             string deviceName = Environment.MachineName;
-            string userName = Environment.UserName;
+            //string userName = Environment.UserName;
             info.AppendLine($"Device Name: {deviceName}");
-            info.AppendLine($"User Name: {userName}");
+            //info.AppendLine($"User Name: {userName}");
 
             // Windows + Build
             using (var searcher = new ManagementObjectSearcher("SELECT Caption, Version, BuildNumber FROM Win32_OperatingSystem"))
@@ -293,9 +293,7 @@ namespace ShowIP
 
             
             string localUser = Environment.UserName;
-            string localIP = GetLocalIPv4(out string localMac);
-
-            
+            string localIP = GetLocalIPv4(out string localMac);          
             sb.AppendLine($"Local User: {localUser}");
             sb.AppendLine($"Local IP: {localIP}");
             sb.AppendLine($"Local MAC: {localMac}");
