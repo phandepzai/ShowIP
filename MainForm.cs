@@ -1,46 +1,42 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Text;
 using System.IO;
-using System.Management; // để dùng WMI
+using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Windows.Forms;
-using System.Xml.Linq;
+using System.Diagnostics; // cho Process
+using System.Text.RegularExpressions; // cho Regex
+
+
+
 
 
 namespace ShowIP
 {
     public partial class MainForm : Form
     {
-        private Label lblPCInfo;
-        private Label lblNetInfo;
+        private Point pcInfoLocation;
+        private Point netInfoLocation;
         private Timer refreshTimer;
         private ToolTip toolTip;
-
-        // kéo thả
         private bool dragging = false;
         private Point dragCursorPoint;
         private Point dragFormPoint;
-        private Label draggingLabel = null;
-
-        // Đường dẫn AppData ẩn
+        private string draggingLabel = null;
         private string configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "ShowIP", "config.ini");
 
-        // --- Hotkey ---
+        // Hotkey
         [DllImport("user32.dll")]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
         [DllImport("user32.dll")]
         private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
         private const int MOD_CONTROL = 0x2;
         private const int MOD_SHIFT = 0x4;
         private const int WM_HOTKEY = 0x0312;
@@ -49,124 +45,116 @@ namespace ShowIP
         public MainForm()
         {
             InitializeComponent();
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
             SetupUI();
-
-            // Đăng ký hotkey Ctrl + Shift + Q để thoát
             RegisterHotKey(this.Handle, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, (int)Keys.Q);
         }
 
         private void SetupUI()
         {
-            // Form overlay
             this.FormBorderStyle = FormBorderStyle.None;
             this.WindowState = FormWindowState.Maximized;
             this.ShowInTaskbar = false;
             this.BackColor = Color.Black;
             this.TransparencyKey = Color.Black;
 
-            // Label PC Info
-            lblPCInfo = new Label()
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                ForeColor = ColorTranslator.FromHtml("#BD6B09"),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.TopLeft
-            };
-            this.Controls.Add(lblPCInfo);
-
-            // Label Network Info
-            lblNetInfo = new Label()
-            {
-                AutoSize = true,
-                Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                ForeColor = ColorTranslator.FromHtml("#BD6B09"),
-                BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.TopLeft
-            };
-            this.Controls.Add(lblNetInfo);
+            // Mặc định vị trí
+            Rectangle screen = Screen.PrimaryScreen.Bounds;
+            pcInfoLocation = new Point(screen.Width - 400, 50);
+            netInfoLocation = new Point(screen.Width - 400, 150);
 
             // Tooltip
             toolTip = new ToolTip();
-            toolTip.SetToolTip(lblPCInfo, "@Nông Văn Phấn");
-            toolTip.SetToolTip(lblNetInfo, "@Nông Văn Phấn");
-
-            // Cho phép kéo thả
-            EnableDrag(lblPCInfo);
-            EnableDrag(lblNetInfo);
-
-            // ⚡ Mặc định đặt ở bên phải màn hình
-            Rectangle screen = Screen.PrimaryScreen.Bounds;
-            lblPCInfo.Location = new Point(screen.Width - 400, 50);
-            lblNetInfo.Location = new Point(screen.Width - 400, lblPCInfo.Bottom + 40);
-
-            // Load config nếu có
-            LoadConfig();
+            toolTip.SetToolTip(this, "@Nông Văn Phấn");
 
             // Timer refresh
             refreshTimer = new Timer();
             refreshTimer.Interval = 30000;
-            refreshTimer.Tick += (s, e) => RefreshInfo();
+            refreshTimer.Tick += (s, e) => this.Invalidate();
             refreshTimer.Start();
 
-            RefreshInfo();
+            LoadConfig();
         }
 
-
-        private void EnableDrag(Label label)
+        protected override void OnPaint(PaintEventArgs e)
         {
-            label.MouseDown += (s, e) =>
+            base.OnPaint(e);
+            e.Graphics.TextRenderingHint = TextRenderingHint.AntiAlias;
+
+            // Vẽ PC Info
+            TextRenderer.DrawText(
+                e.Graphics,
+                GetPCInfo(),
+                new Font("Roboto", 14, FontStyle.Bold),
+                pcInfoLocation,
+                ColorTranslator.FromHtml("#FFF"),
+                Color.Transparent,
+                TextFormatFlags.Left | TextFormatFlags.WordBreak
+            );
+
+            // Vẽ Network Info
+            TextRenderer.DrawText(
+                e.Graphics,
+                GetNetworkInfo(),
+                new Font("Roboto", 14, FontStyle.Bold),
+                netInfoLocation,
+                ColorTranslator.FromHtml("#FFF"),
+                Color.Transparent,
+                TextFormatFlags.Left | TextFormatFlags.WordBreak
+            );
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
             {
-                dragging = true;
-                draggingLabel = label;
-                dragCursorPoint = Cursor.Position;
-                dragFormPoint = label.Location;
-            };
-            label.MouseMove += (s, e) =>
-            {
-                if (dragging && draggingLabel != null)
+                if (IsPointInTextArea(e.Location, pcInfoLocation, GetPCInfo()))
                 {
-                    Point diff = Point.Subtract(Cursor.Position, new Size(dragCursorPoint));
-                    draggingLabel.Location = Point.Add(dragFormPoint, new Size(diff));
+                    dragging = true;
+                    draggingLabel = "PCInfo";
+                    dragCursorPoint = Cursor.Position;
+                    dragFormPoint = pcInfoLocation;
                 }
-            };
-            label.MouseUp += (s, e) =>
-            {
-                dragging = false;
-                draggingLabel = null;
-                SaveConfig();
-            };
+                else if (IsPointInTextArea(e.Location, netInfoLocation, GetNetworkInfo()))
+                {
+                    dragging = true;
+                    draggingLabel = "NetInfo";
+                    dragCursorPoint = Cursor.Position;
+                    dragFormPoint = netInfoLocation;
+                }
+            }
         }
 
-        private void RefreshInfo()
+        protected override void OnMouseMove(MouseEventArgs e)
         {
-            lblPCInfo.Text = GetPCInfo();
-            lblNetInfo.Text = GetNetworkInfo();
-
-            Rectangle screen = Screen.PrimaryScreen.Bounds;
-
-            if (!File.Exists(configPath))
+            if (dragging)
             {
-                // Tính chiều rộng lớn nhất
-                int maxWidth = Math.Max(lblPCInfo.Width, lblNetInfo.Width);
-
-                // Căn lề phải, lấy cùng 1 Left cho cả 2 label
-                int left = screen.Width - maxWidth - 20;
-
-                lblPCInfo.Location = new Point(left, 50);
-                lblNetInfo.Location = new Point(left, lblPCInfo.Bottom + 40);
-            }
-            else
-            {
-                // Tránh tràn màn hình nếu vị trí đã lưu quá rộng
-                if (lblPCInfo.Right > screen.Width)
-                    lblPCInfo.Left = screen.Width - lblPCInfo.Width - 20;
-
-                if (lblNetInfo.Right > screen.Width)
-                    lblNetInfo.Left = screen.Width - lblNetInfo.Width - 20;
+                Point diff = Point.Subtract(Cursor.Position, new Size(dragCursorPoint));
+                if (draggingLabel == "PCInfo")
+                    pcInfoLocation = Point.Add(dragFormPoint, new Size(diff));
+                else if (draggingLabel == "NetInfo")
+                    netInfoLocation = Point.Add(dragFormPoint, new Size(diff));
+                this.Invalidate();
             }
         }
 
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            dragging = false;
+            draggingLabel = null;
+            SaveConfig();
+        }
+
+        private bool IsPointInTextArea(Point point, Point textLocation, string text)
+        {
+            using (Graphics g = this.CreateGraphics())
+            {
+                Size textSize = TextRenderer.MeasureText(g, text, new Font("Segoe UI", 14, FontStyle.Bold));
+                Rectangle textRect = new Rectangle(textLocation, textSize);
+                return textRect.Contains(point);
+            }
+        }
 
 
         // --- PC INFO ---
@@ -190,7 +178,7 @@ namespace ShowIP
                     string version = obj["Version"]?.ToString();
                     string build = obj["BuildNumber"]?.ToString();
 
-                    info.AppendLine($"Windows: {caption} ({version} Build {build})");
+                    info.AppendLine($"OS: {caption} ({version} Build {build})");
                 }
             }
 
@@ -249,7 +237,6 @@ namespace ShowIP
         {
             try
             {
-                // Thử DNS lookup
                 var entry = Dns.GetHostEntry(ipAddress);
                 if (!string.IsNullOrEmpty(entry.HostName))
                     return entry.HostName;
@@ -258,7 +245,6 @@ namespace ShowIP
 
             try
             {
-                // Nếu DNS không được thì thử ARP
                 Process p = new Process();
                 p.StartInfo.FileName = "arp";
                 p.StartInfo.Arguments = "-a";
@@ -266,13 +252,11 @@ namespace ShowIP
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.CreateNoWindow = true;
                 p.Start();
-
                 string output = p.StandardOutput.ReadToEnd();
                 p.WaitForExit();
 
-                string pattern = $@"\s*{ipAddress}\s+([a-f0-9:-]+)";
+                string pattern = $@"\s*{ipAddress}\s+([a-f0-9-]+)";
                 var match = Regex.Match(output, pattern, RegexOptions.IgnoreCase);
-
                 if (match.Success)
                 {
                     string mac = match.Groups[1].Value;
@@ -359,16 +343,14 @@ namespace ShowIP
                 {
                     Directory.CreateDirectory(folder);
                 }
-
                 using (StreamWriter writer = new StreamWriter(configPath, false))
                 {
                     writer.WriteLine("[PCInfo]");
-                    writer.WriteLine($"X={lblPCInfo.Location.X}");
-                    writer.WriteLine($"Y={lblPCInfo.Location.Y}");
-
+                    writer.WriteLine($"X={pcInfoLocation.X}");
+                    writer.WriteLine($"Y={pcInfoLocation.Y}");
                     writer.WriteLine("[NetInfo]");
-                    writer.WriteLine($"X={lblNetInfo.Location.X}");
-                    writer.WriteLine($"Y={lblNetInfo.Location.Y}");
+                    writer.WriteLine($"X={netInfoLocation.X}");
+                    writer.WriteLine($"Y={netInfoLocation.Y}");
                 }
             }
             catch { }
@@ -394,13 +376,13 @@ namespace ShowIP
                             {
                                 if (section == "[PCInfo]")
                                 {
-                                    if (line.StartsWith("X=")) lblPCInfo.Location = new Point(val, lblPCInfo.Location.Y);
-                                    else lblPCInfo.Location = new Point(lblPCInfo.Location.X, val);
+                                    if (line.StartsWith("X=")) pcInfoLocation = new Point(val, pcInfoLocation.Y);
+                                    else pcInfoLocation = new Point(pcInfoLocation.X, val);
                                 }
                                 else if (section == "[NetInfo]")
                                 {
-                                    if (line.StartsWith("X=")) lblNetInfo.Location = new Point(val, lblNetInfo.Location.Y);
-                                    else lblNetInfo.Location = new Point(lblNetInfo.Location.X, val);
+                                    if (line.StartsWith("X=")) netInfoLocation = new Point(val, netInfoLocation.Y);
+                                    else netInfoLocation = new Point(netInfoLocation.X, val);
                                 }
                             }
                         }
