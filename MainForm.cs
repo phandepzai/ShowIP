@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Text;
 using System.IO;
@@ -86,7 +86,7 @@ namespace ShowIP
             TextRenderer.DrawText(
                 e.Graphics,
                 GetPCInfo(),
-                new Font("Roboto", 14, FontStyle.Bold),
+                new Font("Roboto", 13, FontStyle.Bold),
                 pcInfoLocation,
                 ColorTranslator.FromHtml("#FFF"),
                 Color.Transparent,
@@ -97,7 +97,7 @@ namespace ShowIP
             TextRenderer.DrawText(
                 e.Graphics,
                 GetNetworkInfo(),
-                new Font("Roboto", 14, FontStyle.Bold),
+                new Font("Roboto", 13, FontStyle.Bold),
                 netInfoLocation,
                 ColorTranslator.FromHtml("#FFF"),
                 Color.Transparent,
@@ -294,10 +294,10 @@ namespace ShowIP
                     {
                         if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
                         {
-                            string remoteHost = ResolveHostName(addr.Address.ToString());
+                            //string remoteHost = ResolveHostName(addr.Address.ToString());
 
                             sb.AppendLine($"Interface: {ni.Name}");
-                            sb.AppendLine($"Connected To: {remoteHost}");
+                            //sb.AppendLine($"Connected To: {remoteHost}");
                             sb.AppendLine($"IP: {addr.Address}");
                             sb.AppendLine($"MAC: {mac}");
                             sb.AppendLine();
