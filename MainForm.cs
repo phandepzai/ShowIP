@@ -426,7 +426,7 @@ namespace ShowIP
                         {
                             string remoteHost = ResolveHostName(addr.Address.ToString());
                             sb.AppendLine($"Interface: {ni.Name}");
-                            sb.AppendLine($"Connected To: {remoteHost}");
+                            //sb.AppendLine($"Connected To: {remoteHost}");
                             sb.AppendLine($"IP: {addr.Address}");
                             sb.AppendLine($"MAC: {mac}");
                             sb.AppendLine();
@@ -519,3 +519,4 @@ namespace ShowIP
         }
     }
 }
+
