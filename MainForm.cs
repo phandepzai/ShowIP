@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Linq;
-using System.Diagnostics; // cho Process
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
 using System.IO;
@@ -10,15 +10,13 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions; // cho Regex
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 
-
-
-
-namespace ShowIP
+namespace Show_Infomation
 {
+    #region CODE ỨNG DỤNG HIỂN THỊ THÔNG TIN PC VÀ MẠNG
     public class DraggableText
     {
         public string Text { get; set; }
@@ -38,24 +36,13 @@ namespace ShowIP
             IsDragging = false;
         }
 
+        // Cập nhật ContainsPoint để sử dụng GetTextSize
         public bool ContainsPoint(Graphics g, Point point)
         {
-            if (string.IsNullOrEmpty(Text) || g == null)
-                return false;
+            Size textSize = GetTextSize(g);
+            if (textSize.IsEmpty) return false;
 
-            string[] lines = Text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
-            int maxWidth = 0;
-            int totalHeight = 0;
-
-            foreach (string line in lines)
-            {
-                Size lineSize = TextRenderer.MeasureText(g, line, Font);
-                if (lineSize.Width > maxWidth)
-                    maxWidth = lineSize.Width;
-                totalHeight += lineSize.Height;
-            }
-
-            Rectangle textRect = new Rectangle(Location, new Size(maxWidth, totalHeight));
+            Rectangle textRect = new Rectangle(Location, textSize);
             return textRect.Contains(point);
         }
 
@@ -74,6 +61,27 @@ namespace ShowIP
                 );
             }
         }
+
+        // THÊM PHƯƠNG THỨC MỚI để tính toán chính xác kích thước văn bản
+        public Size GetTextSize(Graphics g)
+        {
+            if (string.IsNullOrEmpty(Text) || g == null)
+                return Size.Empty;
+
+            string[] lines = Text.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+            int maxWidth = 0;
+            int totalHeight = 0;
+
+            foreach (string line in lines)
+            {
+                // Sử dụng TextRenderer.MeasureText
+                Size lineSize = TextRenderer.MeasureText(g, line, Font);
+                if (lineSize.Width > maxWidth)
+                    maxWidth = lineSize.Width;
+                totalHeight += lineSize.Height;
+            }
+            return new Size(maxWidth, totalHeight);
+        }
     }
 
 
@@ -83,9 +91,9 @@ namespace ShowIP
         private DraggableText netInfoText;
         private Timer refreshTimer;
         private ToolTip toolTip;
-        private string configPath = Path.Combine(
+        private readonly string configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ShowIP", "config.ini");
+            "Show Infomation", "config.ini");
 
         // Hotkey
         [DllImport("user32.dll")]
@@ -105,6 +113,7 @@ namespace ShowIP
             RegisterHotKey(this.Handle, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, (int)Keys.Q);
         }
 
+        // Cập nhật SetupUI để tính toán vị trí Y cho netInfoText
         private void SetupUI()
         {
             this.FormBorderStyle = FormBorderStyle.None;
@@ -113,16 +122,35 @@ namespace ShowIP
             this.BackColor = Color.Black;
             this.TransparencyKey = Color.Black;
 
-            Font textFont = new Font("Cambria", 13, FontStyle.Bold);
-            Color textColor = ColorTranslator.FromHtml("#FFF000");
+            Font textFont = new Font("Arial", 12F, FontStyle.Bold);
+            Color textColor = ColorTranslator.FromHtml("#FF6600");
 
             Rectangle screen = Screen.PrimaryScreen.Bounds;
+
+            // 1. Khởi tạo PC Info với vị trí Y ban đầu cố định
             pcInfoText = new DraggableText(GetPCInfo(), new Point(screen.Width - 400, 50), textFont, textColor);
-            netInfoText = new DraggableText(GetNetworkInfo(), new Point(screen.Width - 400, 150), textFont, textColor);
+
+            // 2. TÍNH TOÁN VỊ TRÍ Y TỰ ĐỘNG CHO NETWORK INFO
+            int netInfoY = 150;
+
+            // Cần đối tượng Graphics để đo kích thước văn bản
+            using (Graphics g = this.CreateGraphics())
+            {
+                // Lấy chiều cao của khối PC Info
+                int pcInfoHeight = pcInfoText.GetTextSize(g).Height;
+
+                // Vị trí Y mới: Vị trí Y của PC Info + Chiều cao PC Info + Khoảng cách lề (ví dụ: 10 pixels)
+                netInfoY = pcInfoText.Location.Y + pcInfoHeight + 10;
+            }
+
+            // 3. Khởi tạo Network Info với vị trí đã tính toán
+            netInfoText = new DraggableText(GetNetworkInfo(), new Point(screen.Width - 400, netInfoY), textFont, textColor);
 
             toolTip = new ToolTip();
-            refreshTimer = new Timer();
-            refreshTimer.Interval = 30000;
+            refreshTimer = new Timer
+            {
+                Interval = 30000
+            };
             refreshTimer.Tick += (s, e) => RefreshInfo();
             refreshTimer.Start();
 
@@ -287,16 +315,17 @@ namespace ShowIP
         private string GetPCInfo()
         {
             StringBuilder info = new StringBuilder();
-            info.AppendLine("❖❖❖ PC Information ❖❖❖");
+            info.AppendLine("❖PC Information❖");
             // Device Name
             string deviceName = Environment.MachineName;
             info.AppendLine($"Device Name: {deviceName}");
+
             // Windows + Build
             try
             {
                 using (var searcher = new ManagementObjectSearcher("SELECT Caption, Version, BuildNumber FROM Win32_OperatingSystem"))
                 {
-                    foreach (ManagementObject obj in searcher.Get())
+                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
                     {
                         string caption = obj["Caption"]?.ToString();
                         string version = obj["Version"]?.ToString();
@@ -311,7 +340,7 @@ namespace ShowIP
             {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
                 {
-                    foreach (ManagementObject obj in searcher.Get())
+                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
                     {
                         info.AppendLine($"CPU: {obj["Name"]}");
                         break;
@@ -324,7 +353,7 @@ namespace ShowIP
             {
                 using (var searcher = new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
                 {
-                    foreach (ManagementObject obj in searcher.Get())
+                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
                     {
                         double ramBytes = Convert.ToDouble(obj["TotalPhysicalMemory"]);
                         double ramMB = Math.Round(ramBytes / (1024 * 1024), 0);
@@ -339,7 +368,7 @@ namespace ShowIP
             {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
                 {
-                    foreach (ManagementObject obj in searcher.Get())
+                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
                     {
                         info.AppendLine($"VGA: {obj["Name"]}");
                     }
@@ -396,10 +425,16 @@ namespace ShowIP
         private string GetNetworkInfo()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("»» Network Information ««");
+            sb.AppendLine("»Network Information«");
             string localUser = Environment.UserName;
-            string localIP = GetLocalIPv4(out string localMac);
+
+            // [THAY ĐỔI QUAN TRỌNG]: Cập nhật lời gọi GetLocalIPv4 và thêm dòng hiển thị
+            string localMac;
+            string localInterfaceName; // Biến mới
+            string localIP = GetLocalIPv4(out localMac, out localInterfaceName);
+
             sb.AppendLine($"Local User: {localUser}");
+            sb.AppendLine($"Local Interface: {localInterfaceName}"); // Tên cổng mạng kết nối đến internet hiện tại
             sb.AppendLine($"Local IP: {localIP}");
             sb.AppendLine($"Local MAC: {localMac}");
             sb.AppendLine();
@@ -426,7 +461,7 @@ namespace ShowIP
                         {
                             string remoteHost = ResolveHostName(addr.Address.ToString());
                             sb.AppendLine($"Interface: {ni.Name}");
-                            //sb.AppendLine($"Connected To: {remoteHost}");
+                            //sb.AppendLine($"Connected To: {remoteHost}"); //Hiển thị tên host đang kết nối
                             sb.AppendLine($"IP: {addr.Address}");
                             sb.AppendLine($"MAC: {mac}");
                             sb.AppendLine();
@@ -469,17 +504,23 @@ namespace ShowIP
             return "UnknownHost";
         }
 
-        private string GetLocalIPv4(out string macAddress)
+        // [THAY ĐỔI QUAN TRỌNG]: Cập nhật chữ ký GetLocalIPv4 để trả về tên giao diện mạng
+        private string GetLocalIPv4(out string macAddress, out string interfaceName)
         {
             macAddress = "N/A";
+            interfaceName = "N/A"; // Thêm tham số out mới để lấy tên giao diện
             string preferredIp = "N/A";
             string defaultIp = "N/A";
+
             foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
             {
+                // Chỉ xét các giao diện Ethernet đang hoạt động
                 if (ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet &&
                     ni.OperationalStatus == OperationalStatus.Up)
                 {
-                    macAddress = BitConverter.ToString(ni.GetPhysicalAddress().GetAddressBytes());
+                    string currentMac = BitConverter.ToString(ni.GetPhysicalAddress().GetAddressBytes());
+                    string currentInterfaceName = ni.Name;
+
                     foreach (UnicastIPAddressInformation addr in ni.GetIPProperties().UnicastAddresses)
                     {
                         if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
@@ -489,10 +530,16 @@ namespace ShowIP
                             if (ip.StartsWith("107.125.") || ip.StartsWith("107.126.") || ip.StartsWith("107.115."))
                             {
                                 preferredIp = ip;
+                                macAddress = currentMac; // Cập nhật MAC và Interface Name chính thức
+                                interfaceName = currentInterfaceName;
+                                // Nếu tìm thấy IP ưu tiên, ta có đủ thông tin và có thể thoát
+                                return preferredIp;
                             }
-                            else
+                            else if (defaultIp == "N/A") // Gán IP mặc định (cho giao diện đầu tiên tìm thấy)
                             {
                                 defaultIp = ip;
+                                macAddress = currentMac;
+                                interfaceName = currentInterfaceName;
                             }
                         }
                     }
@@ -518,5 +565,5 @@ namespace ShowIP
             base.OnFormClosed(e);
         }
     }
+    #endregion
 }
-

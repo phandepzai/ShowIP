@@ -5,12 +5,12 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("ShowIP")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("ShowIP")]
-[assembly: AssemblyCopyright("Copyright ©  2025")]
+[assembly: AssemblyTitle("Show Infomation")]
+[assembly: AssemblyDescription("Show Infomation")]
+[assembly: AssemblyConfiguration("Show Infomation")]
+[assembly: AssemblyCompany("Nong Van Phan")]
+[assembly: AssemblyProduct("Show Infomation")]
+[assembly: AssemblyCopyright("Copyright ©Nong Van Phan 2025")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -29,5 +29,5 @@ using System.Runtime.InteropServices;
 //      Build Number
 //      Revision
 //
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.10")]
+[assembly: AssemblyFileVersion("1.10")]
