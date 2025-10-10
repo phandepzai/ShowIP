@@ -123,7 +123,7 @@ namespace Show_Infomation
             this.TransparencyKey = Color.Black;
 
             Font textFont = new Font("Arial", 12F, FontStyle.Bold);
-            Color textColor = ColorTranslator.FromHtml("#FF6600");
+            Color textColor = ColorTranslator.FromHtml("#00bb00");
 
             Rectangle screen = Screen.PrimaryScreen.Bounds;
 
