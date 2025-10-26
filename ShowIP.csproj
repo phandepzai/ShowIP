@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{5992DB9D-87A3-4CF2-BAC8-1C3EF296CCB9}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>Show_Infomation</RootNamespace>
-    <AssemblyName>Show Infomation</AssemblyName>
+    <RootNamespace>Show_IP</RootNamespace>
+    <AssemblyName>Show IP</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -53,6 +53,7 @@
     <Compile Include="MainForm.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="UpdateManager.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -72,6 +73,7 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
+    <None Include="Scripts\IncrementVersion.ps1" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
@@ -80,4 +82,11 @@
     <EmbeddedResource Include="icon.ico" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="IncrementBuildVersion" BeforeTargets="BeforeBuild">
+    <PropertyGroup>
+      <AssemblyFile>$(ProjectDir)Properties\AssemblyInfo.cs</AssemblyFile>
+      <ScriptPath>$(ProjectDir)Scripts\IncrementVersion.ps1</ScriptPath>
+    </PropertyGroup>
+    <Exec Command="powershell.exe -ExecutionPolicy Bypass -File &quot;$(ScriptPath)&quot; &quot;$(AssemblyFile)&quot;" Condition="Exists('$(ScriptPath)') And Exists('$(AssemblyFile)')" />
+  </Target>
 </Project>

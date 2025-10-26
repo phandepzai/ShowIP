@@ -1,9 +1,10 @@
 ﻿using System;
-using System.Linq;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.IO;
+using System.Linq;
 using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -26,43 +27,93 @@ namespace Show_Infomation
         public bool IsDragging { get; set; }
         public Point DragStartPoint { get; set; }
         public Point DragStartLocation { get; set; }
+        // Thêm thuộc tính mới
+        public Color OutlineColor { get; set; } // Màu viền chữ
+        public float OutlineWidth { get; set; } // Độ dày viền
+        public Color BackgroundColor { get; set; } // Màu nền bán trong suốt
+        public int Padding { get; set; } // Khoảng cách lề cho nền
 
-        public DraggableText(string text, Point location, Font font, Color color)
+        public DraggableText(string text, Point location, Font font, Color color,
+            Color outlineColor, float outlineWidth, Color backgroundColor, int padding)
         {
             Text = text;
             Location = location;
             Font = font;
             Color = color;
+            OutlineColor = outlineColor;
+            OutlineWidth = outlineWidth;
+            BackgroundColor = backgroundColor;
+            Padding = padding;
             IsDragging = false;
         }
 
-        // Cập nhật ContainsPoint để sử dụng GetTextSize
         public bool ContainsPoint(Graphics g, Point point)
         {
             Size textSize = GetTextSize(g);
             if (textSize.IsEmpty) return false;
 
-            Rectangle textRect = new Rectangle(Location, textSize);
+            // Tăng kích thước vùng click để bao gồm cả padding
+            Rectangle textRect = new Rectangle(
+                Location.X - Padding,
+                Location.Y - Padding,
+                textSize.Width + 2 * Padding,
+                textSize.Height + 2 * Padding);
             return textRect.Contains(point);
         }
 
         public void Draw(Graphics g)
         {
-            if (g != null)
+            if (g == null || string.IsNullOrEmpty(Text)) return;
+
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit; // Chống nhòe chữ
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Size textSize = GetTextSize(g);
+            if (textSize.IsEmpty) return;
+
+            // Vẽ nền bán trong suốt
+            if (BackgroundColor != Color.Empty)
             {
-                TextRenderer.DrawText(
-                    g,
-                    Text,
-                    Font,
-                    Location,
-                    Color,
-                    Color.Transparent,
-                    TextFormatFlags.Left | TextFormatFlags.WordBreak
-                );
+                using (Brush bgBrush = new SolidBrush(BackgroundColor))
+                {
+                    Rectangle bgRect = new Rectangle(
+                        Location.X - Padding,
+                        Location.Y - Padding,
+                        textSize.Width + 2 * Padding,
+                        textSize.Height + 2 * Padding);
+                    g.FillRectangle(bgBrush, bgRect);
+                }
             }
+
+            // Vẽ viền chữ
+            if (OutlineWidth > 0 && OutlineColor != Color.Empty)
+            {
+                using (GraphicsPath path = new GraphicsPath())
+                using (Pen outlinePen = new Pen(OutlineColor, OutlineWidth))
+                {
+                    path.AddString(
+                        Text,
+                        Font.FontFamily,
+                        (int)Font.Style,
+                        Font.Size,
+                        Location,
+                        StringFormat.GenericDefault);
+                    g.DrawPath(outlinePen, path);
+                }
+            }
+
+            // Vẽ văn bản chính
+            TextRenderer.DrawText(
+                g,
+                Text,
+                Font,
+                Location,
+                Color,
+                Color.Transparent,
+                TextFormatFlags.Left | TextFormatFlags.WordBreak
+            );
         }
 
-        // THÊM PHƯƠNG THỨC MỚI để tính toán chính xác kích thước văn bản
         public Size GetTextSize(Graphics g)
         {
             if (string.IsNullOrEmpty(Text) || g == null)
@@ -74,7 +125,6 @@ namespace Show_Infomation
 
             foreach (string line in lines)
             {
-                // Sử dụng TextRenderer.MeasureText
                 Size lineSize = TextRenderer.MeasureText(g, line, Font);
                 if (lineSize.Width > maxWidth)
                     maxWidth = lineSize.Width;
@@ -93,7 +143,7 @@ namespace Show_Infomation
         private ToolTip toolTip;
         private readonly string configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Show Infomation", "config.ini");
+            "Show IP", "config.ini");
 
         // Hotkey
         [DllImport("user32.dll")]
@@ -110,6 +160,16 @@ namespace Show_Infomation
             this.DoubleBuffered = true;
             this.SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
             SetupUI();
+
+            // Thêm lời gọi kiểm tra cập nhật
+            string exeName = "Show IP.exe"; // Thay bằng tên thực tế của file thực thi
+            string[] updateServers = new[]
+            {
+                "http://107.125.221.79:8888/update/ShowIP/",
+                "http://107.126.41.111:8888/update/ShowIP/" // Thay bằng URL server của bạn
+            };
+            UpdateManager.CheckForUpdates(exeName, updateServers);
+
             RegisterHotKey(this.Handle, HOTKEY_ID, MOD_CONTROL | MOD_SHIFT, (int)Keys.Q);
         }
 
@@ -123,28 +183,45 @@ namespace Show_Infomation
             this.TransparencyKey = Color.Black;
 
             Font textFont = new Font("Arial", 12F, FontStyle.Bold);
-            Color textColor = ColorTranslator.FromHtml("#00bb00");
+            Color textColor = ColorTranslator.FromHtml("#00ff00"); // Màu chữ sáng
+            Color outlineColor = Color.Black; // Viền đen
+            float outlineWidth = 1.5f; // Độ dày viền
+            Color backgroundColor = Color.FromArgb(128, 0, 0, 0); // Nền đen bán trong suốt
+            int padding = 5; // Khoảng cách lề
 
             Rectangle screen = Screen.PrimaryScreen.Bounds;
 
-            // 1. Khởi tạo PC Info với vị trí Y ban đầu cố định
-            pcInfoText = new DraggableText(GetPCInfo(), new Point(screen.Width - 400, 50), textFont, textColor);
+            // Khởi tạo PC Info
+            pcInfoText = new DraggableText(
+                GetPCInfo(),
+                new Point(screen.Width - 400, 50),
+                textFont,
+                textColor,
+                outlineColor,
+                outlineWidth,
+                backgroundColor,
+                padding
+            );
 
-            // 2. TÍNH TOÁN VỊ TRÍ Y TỰ ĐỘNG CHO NETWORK INFO
+            // Tính toán vị trí Y cho Network Info
             int netInfoY = 150;
-
-            // Cần đối tượng Graphics để đo kích thước văn bản
             using (Graphics g = this.CreateGraphics())
             {
-                // Lấy chiều cao của khối PC Info
                 int pcInfoHeight = pcInfoText.GetTextSize(g).Height;
-
-                // Vị trí Y mới: Vị trí Y của PC Info + Chiều cao PC Info + Khoảng cách lề (ví dụ: 10 pixels)
-                netInfoY = pcInfoText.Location.Y + pcInfoHeight + 10;
+                netInfoY = pcInfoText.Location.Y + pcInfoHeight + 10 + 2 * padding;
             }
 
-            // 3. Khởi tạo Network Info với vị trí đã tính toán
-            netInfoText = new DraggableText(GetNetworkInfo(), new Point(screen.Width - 400, netInfoY), textFont, textColor);
+            // Khởi tạo Network Info
+            netInfoText = new DraggableText(
+                GetNetworkInfo(),
+                new Point(screen.Width - 400, netInfoY),
+                textFont,
+                textColor,
+                outlineColor,
+                outlineWidth,
+                backgroundColor,
+                padding
+            );
 
             toolTip = new ToolTip();
             refreshTimer = new Timer
@@ -155,6 +232,15 @@ namespace Show_Infomation
             refreshTimer.Start();
 
             LoadConfig();
+
+            // Thêm kiểm tra cập nhật
+            string exeName = "Show IP.exe"; // Thay bằng tên file thực thi thực tế
+            string[] updateServers = new[]
+            {
+                "http://107.125.221.79:8888/update/ShowIP/",
+                "http://107.126.41.111:8888/update/ShowIP/"  // Thay bằng URL server thực tế
+            };
+            UpdateManager.CheckForUpdates(exeName, updateServers);
         }
 
         private void RefreshInfo()
