@@ -182,7 +182,7 @@ namespace Show_Infomation
             this.BackColor = Color.Black;
             this.TransparencyKey = Color.Black;
 
-            Font textFont = new Font("Arial", 12F, FontStyle.Bold);
+            Font textFont = new Font("Arial", 11F, FontStyle.Bold);
             Color textColor = ColorTranslator.FromHtml("#00ff00"); // Màu chữ sáng
             Color outlineColor = Color.Black; // Viền đen
             float outlineWidth = 1.5f; // Độ dày viền
@@ -397,11 +397,11 @@ namespace Show_Infomation
             }
         }
 
-        // --- PC INFO ---
         private string GetPCInfo()
         {
             StringBuilder info = new StringBuilder();
             info.AppendLine("❖PC Information❖");
+
             // Device Name
             string deviceName = Environment.MachineName;
             info.AppendLine($"Device Name: {deviceName}");
@@ -409,102 +409,271 @@ namespace Show_Infomation
             // Windows + Build
             try
             {
-                using (var searcher = new ManagementObjectSearcher("SELECT Caption, Version, BuildNumber FROM Win32_OperatingSystem"))
-                {
-                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
-                    {
-                        string caption = obj["Caption"]?.ToString();
-                        string version = obj["Version"]?.ToString();
-                        string build = obj["BuildNumber"]?.ToString();
-                        info.AppendLine($"OS: {caption} ({version} Build {build})");
-                    }
-                }
+                var osVersion = Environment.OSVersion;
+                string windowsVersion = GetWindowsVersion();
+                info.AppendLine($"OS: {windowsVersion} ({osVersion.Version} Build {Environment.OSVersion.Version.Build})");
             }
-            catch { }
+            catch
+            {
+                info.AppendLine("OS: Unknown");
+            }
+
             // CPU
             try
             {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor"))
+                using (var results = searcher.Get())
                 {
-                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
+                    foreach (ManagementObject obj in results.Cast<ManagementObject>())
                     {
-                        info.AppendLine($"CPU: {obj["Name"]}");
-                        break;
+                        using (obj)
+                        {
+                            info.AppendLine($"CPU: {obj["Name"]}");
+                            break;
+                        }
                     }
                 }
             }
-            catch { }
+            catch
+            {
+                info.AppendLine("CPU: Unknown");
+            }
+
             // RAM
             try
             {
-                using (var searcher = new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
+                ulong totalMemory = GetTotalPhysicalMemory();
+                if (totalMemory > 0)
                 {
-                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
-                    {
-                        double ramBytes = Convert.ToDouble(obj["TotalPhysicalMemory"]);
-                        double ramMB = Math.Round(ramBytes / (1024 * 1024), 0);
-                        double ramGB = Math.Round(ramBytes / (1024 * 1024 * 1024), 0);
-                        info.AppendLine($"RAM: {ramMB:N0} MB ({ramGB} GB)");
-                    }
+                    double totalGB = Math.Round(totalMemory / (1024.0 * 1024 * 1024), 1);
+                    info.AppendLine($"RAM: {totalGB} GB");
+                }
+                else
+                {
+                    info.AppendLine($"RAM: Unknown");
                 }
             }
-            catch { }
+            catch
+            {
+                info.AppendLine("RAM: Unknown");
+            }
+
             // VGA
             try
             {
                 using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
+                using (var results = searcher.Get())
                 {
-                    foreach (ManagementObject obj in searcher.Get().Cast<ManagementObject>())
+                    foreach (ManagementObject obj in results.Cast<ManagementObject>())
                     {
-                        info.AppendLine($"VGA: {obj["Name"]}");
+                        using (obj)
+                        {
+                            info.AppendLine($"VGA: {obj["Name"]}");
+                        }
                     }
                 }
             }
-            catch { }
-            // SSD / HDD
+            catch
+            {
+                info.AppendLine("VGA: Unknown");
+            }
+
+            // Ổ CỨNG - Sử dụng WMI để lấy thông tin chính xác cho ổ >2TB
             try
             {
-                var diskInfo = new StringBuilder();
-                Process p = new Process();
-                p.StartInfo.FileName = "powershell.exe";
-                p.StartInfo.Arguments = "Get-PhysicalDisk | Select-Object Model, MediaType";
-                p.StartInfo.UseShellExecute = false;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.CreateNoWindow = true;
-                p.Start();
-                string output = p.StandardOutput.ReadToEnd();
-                p.WaitForExit();
-                var lines = output.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var line in lines)
-                {
-                    if (line.Contains("---") || line.Contains("Model")) continue;
-                    string[] parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length >= 2)
-                    {
-                        string model = parts[0];
-                        string mediaType = parts[1];
-                        for (int i = 2; i < parts.Length - 1; i++)
-                        {
-                            model += " " + parts[i];
-                        }
-                        mediaType = parts[parts.Length - 1];
-                        if (mediaType.ToLower().Contains("ssd"))
-                        {
-                            diskInfo.AppendLine($"SSD: {model}");
-                        }
-                        else if (mediaType.ToLower().Contains("hdd"))
-                        {
-                            diskInfo.AppendLine($"HDD: {model}");
-                        }
-                    }
-                }
-                info.Append(diskInfo.ToString());
+                string diskInfo = GetDiskDrivesInfo();
+                info.Append(diskInfo);
             }
             catch (Exception ex)
             {
-                info.AppendLine($"Lỗi khi lấy thông tin ổ cứng: {ex.Message}");
+                info.AppendLine($"Drives: Error - {ex.Message}");
             }
+
             return info.ToString();
+        }
+
+        private string GetDiskDrivesInfo()
+        {
+            StringBuilder diskInfo = new StringBuilder();
+
+            try
+            {
+                // Phương án 1: Sử dụng WMI để lấy thông tin ổ vật lý
+                using (var searcher = new ManagementObjectSearcher("SELECT Model, Size, MediaType FROM Win32_DiskDrive"))
+                using (var results = searcher.Get())
+                {
+                    foreach (ManagementObject drive in results.Cast<ManagementObject>())
+                    {
+                        using (drive)
+                        {
+                            string model = drive["Model"]?.ToString()?.Trim() ?? "Unknown Model";
+                            string mediaType = drive["MediaType"]?.ToString() ?? "Unknown";
+                            ulong sizeBytes = 0;
+
+                            // Xử lý dung lượng lớn với ulong
+                            if (drive["Size"] != null)
+                            {
+                                try
+                                {
+                                    sizeBytes = Convert.ToUInt64(drive["Size"]);
+                                }
+                                catch
+                                {
+                                    // Thử parse như string nếu convert trực tiếp thất bại
+                                    ulong.TryParse(drive["Size"].ToString(), out sizeBytes);
+                                }
+                            }
+
+                            string sizeFormatted = FormatDiskSize(sizeBytes);
+                            string driveType = GetDriveTypeFromMediaType(mediaType);
+
+                            diskInfo.AppendLine($"{driveType}: {model} ({sizeFormatted})");
+                        }
+                    }
+                }
+
+                // Phương án 2: Hiển thị thông tin ổ logic (partition)
+                diskInfo.AppendLine("--- Logical Drives ---");
+                string logicalDrives = GetLogicalDrivesInfo();
+                diskInfo.Append(logicalDrives);
+            }
+            catch (Exception ex)
+            {
+                diskInfo.AppendLine($"Thông tin đĩa bị lỗi: {ex.Message}");
+            }
+
+            return diskInfo.ToString();
+        }
+
+        private string FormatDiskSize(ulong bytes)
+        {
+            if (bytes == 0) return "0 GB";
+
+            string[] suffixes = { "B", "KB", "MB", "GB", "TB", "PB" };
+            int counter = 0;
+            decimal number = (decimal)bytes;
+
+            while (Math.Round(number / 1024) >= 1)
+            {
+                number /= 1024;
+                counter++;
+            }
+
+            // Hiển thị 2 số thập phân cho TB và PB
+            string format = (counter >= 4) ? "N2" : "N0";
+            return $"{number.ToString(format)} {suffixes[counter]}";
+        }
+        private string GetLogicalDrivesInfo()
+        {
+            StringBuilder logicalInfo = new StringBuilder();
+
+            try
+            {
+                DriveInfo[] allDrives = DriveInfo.GetDrives();
+
+                foreach (DriveInfo drive in allDrives)
+                {
+                    if (drive.IsReady)
+                    {
+                        try
+                        {
+                            // Sử dụng ulong để tránh overflow với ổ >2TB
+                            ulong totalSize = (ulong)drive.TotalSize;
+                            ulong availableFreeSpace = (ulong)drive.AvailableFreeSpace;
+                            ulong usedSpace = totalSize - availableFreeSpace;
+
+                            double usedPercent = totalSize > 0 ?
+                                (double)usedSpace / totalSize * 100 : 0;
+
+                            string totalFormatted = FormatDiskSize(totalSize);
+                            string freeFormatted = FormatDiskSize(availableFreeSpace);
+
+                            logicalInfo.AppendLine(
+                                $"{drive.Name} {drive.VolumeLabel} - " +
+                                $"{freeFormatted} free of {totalFormatted} " +
+                                $"(Used: {usedPercent:F1}%)");
+                        }
+                        catch (Exception ex)
+                        {
+                            logicalInfo.AppendLine($"{drive.Name} - Error: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logicalInfo.AppendLine($"Logical drives error: {ex.Message}");
+            }
+
+            return logicalInfo.ToString();
+        }
+        private string GetDriveTypeFromMediaType(string mediaType)
+        {
+            if (string.IsNullOrEmpty(mediaType)) return "Disk";
+
+            mediaType = mediaType.ToLower();
+            if (mediaType.Contains("ssd") || mediaType.Contains("solid")) return "SSD";
+            if (mediaType.Contains("hdd") || mediaType.Contains("disk")) return "HDD";
+            if (mediaType.Contains("nvme")) return "NVMe";
+            if (mediaType.Contains("flash") || mediaType.Contains("usb")) return "USB";
+
+            return "Disk";
+        }
+
+        private ulong GetTotalPhysicalMemory()
+        {
+            try
+            {
+                using (var searcher = new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
+                using (var results = searcher.Get())
+                {
+                    foreach (ManagementObject obj in results.Cast<ManagementObject>())
+                    {
+                        using (obj)
+                        {
+                            if (obj["TotalPhysicalMemory"] != null)
+                            {
+                                return Convert.ToUInt64(obj["TotalPhysicalMemory"]);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting RAM info: {ex.Message}");
+            }
+
+            // Return giá trị mặc định nếu có lỗi
+            return 0;
+        }
+
+        private string GetWindowsVersion()
+        {
+            try
+            {
+                using (var searcher = new ManagementObjectSearcher("SELECT Caption FROM Win32_OperatingSystem"))
+                using (var results = searcher.Get())
+                {
+                    foreach (ManagementObject obj in results.Cast<ManagementObject>())
+                    {
+                        using (obj)
+                        {
+                            if (obj["Caption"] != null)
+                            {
+                                return obj["Caption"].ToString();
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting OS info: {ex.Message}");
+            }
+
+            // Return giá trị mặc định nếu có lỗi
+            return "Unknown Windows Version";
         }
 
         // --- NETWORK INFO ---
@@ -515,9 +684,7 @@ namespace Show_Infomation
             string localUser = Environment.UserName;
 
             // [THAY ĐỔI QUAN TRỌNG]: Cập nhật lời gọi GetLocalIPv4 và thêm dòng hiển thị
-            string localMac;
-            string localInterfaceName; // Biến mới
-            string localIP = GetLocalIPv4(out localMac, out localInterfaceName);
+            string localIP = GetLocalIPv4(out string localMac, out string localInterfaceName);
 
             sb.AppendLine($"Local User: {localUser}");
             sb.AppendLine($"Local Interface: {localInterfaceName}"); // Tên cổng mạng kết nối đến internet hiện tại
